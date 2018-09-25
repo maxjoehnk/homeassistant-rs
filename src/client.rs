@@ -69,7 +69,7 @@ impl Client {
     fn auth(&self, client: Result<RestClient, roadrunner::Error>) -> Result<RestClient, roadrunner::Error> {
         match self.password {
             Some(ref password) => {
-                client.header_set_raw("x-ha-access", vec!(password.to_owned()))
+                client.header_set_raw("Authorization", vec!(format!("Bearer {}", password)))
             },
             None => client,
         }
