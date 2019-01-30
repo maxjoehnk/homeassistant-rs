@@ -1,7 +1,5 @@
-use tokio_core;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use roadrunner::{self, RestClient, RestClientMethods};
 
 use Error;
 use structs;
@@ -20,59 +18,45 @@ impl Client {
     /// ```
     pub fn new(endpoint: String, password: Option<String>) -> Client {
         Client {
-            endpoint: endpoint,
-            password: password,
+            endpoint,
+            password,
         }
     }
 
-    fn deserialize<T: DeserializeOwned>(&self, response: roadrunner::Response) -> Result<T, Error> {
-        info!("Response: {:?}", response);
-
-        let obj = response.content().as_typed()?;
-        Ok(obj)
-    }
-
-    fn get<T: DeserializeOwned>(&self, url: &str) -> Result<T, Error> {
-        let mut core = tokio_core::reactor::Core::new().unwrap();
-
-        let uri = format!("{}{}", self.endpoint, url); // TODO
-
-        let response = self.auth(RestClient::get(&uri))
-                            .execute_on(&mut core)?;
-
-        self.deserialize(response)
-    }
-
-    fn delete<T: DeserializeOwned>(&self, url: &str) -> Result<T, Error> {
-        let mut core = tokio_core::reactor::Core::new().unwrap();
-
-        let uri = format!("{}{}", self.endpoint, url); // TODO
-
-        let response = self.auth(RestClient::delete(&uri))
-                            .execute_on(&mut core)?;
-
-        self.deserialize(response)
-    }
-
-    fn post<T: Serialize, R: DeserializeOwned>(&self, url: &str, msg: T) -> Result<R, Error> {
-        let mut core = tokio_core::reactor::Core::new().unwrap();
-
-        let uri = format!("{}{}", self.endpoint, url); // TODO
-
-        let response = self.auth(RestClient::post(&uri))
-                            .json_body_typed(&msg)
-                            .execute_on(&mut core)?;
-
-        self.deserialize(response)
-    }
-
-    fn auth(&self, client: Result<RestClient, roadrunner::Error>) -> Result<RestClient, roadrunner::Error> {
-        match self.password {
-            Some(ref password) => {
-                client.header_set_raw("Authorization", vec!(format!("Bearer {}", password)))
-            },
-            None => client,
+    fn send_request<T: DeserializeOwned + std::fmt::Debug>(&self, mut builder: reqwest::RequestBuilder) -> Result<T, Error> {
+        if let Some(ref password) = self.password {
+            builder = builder.bearer_auth(password);
         }
+
+        let res = builder
+            .send()?
+            .json()?;
+
+        info!("Response: {:?}", res);
+
+        Ok(res)
+    }
+
+    fn get<T: DeserializeOwned + std::fmt::Debug>(&self, url: &str) -> Result<T, Error> {
+        let uri = format!("{}{}", self.endpoint, url); // TODO
+
+        self.send_request(reqwest::Client::new().get(&uri))
+    }
+
+    fn delete<T: DeserializeOwned + std::fmt::Debug>(&self, url: &str) -> Result<T, Error> {
+        let uri = format!("{}{}", self.endpoint, url); // TODO
+
+        self.send_request(reqwest::Client::new().delete(&uri))
+    }
+
+    fn post<T: Serialize, R: DeserializeOwned + std::fmt::Debug>(&self, url: &str, msg: T) -> Result<R, Error> {
+        let uri = format!("{}{}", self.endpoint, url); // TODO
+
+        let client = reqwest::Client::new();
+
+        let req = client.post(&uri).json(&msg);
+
+        self.send_request(req)
     }
 }
 
